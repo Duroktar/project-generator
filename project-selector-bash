@@ -1,0 +1,117 @@
+#!/bin/bash
+
+# This script allows the user to select a project type and then runs the corresponding
+# project generation script.
+
+# --- Color Definitions (Optional) ---
+# Define ANSI escape codes for colors
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# --- Function to echo with color if enabled ---
+cecho() {
+  local color="$1"
+  local message="$2"
+  if [ "$COLOR_OUTPUT" = true ]; then
+    echo -e "${color}${message}${NC}"
+  else
+    echo "${message}"
+  fi
+}
+
+# --- 0. Parse Command Line Arguments ---
+COLOR_OUTPUT=false # Default to no color output
+YES_TO_ALL=false   # Default to interactive mode
+
+# Iterate through arguments to find flags
+for arg in "$@"; do
+  case "$arg" in
+    --color)
+      COLOR_OUTPUT=true
+      ;;
+    -y)
+      YES_TO_ALL=true
+      ;;
+    *)
+      # Ignore other arguments for now, they might be passed to the sub-script
+      ;;
+  esac
+done
+
+cecho "${BLUE}" "Welcome to the Project Type Selector!"
+cecho "${BLUE}" "Please choose the type of project you wish to generate."
+
+# --- Define Project Types ---
+# Add more project types here as they are developed.
+# The value should be the path to the script that generates that project type.
+declare -A PROJECT_TYPES
+PROJECT_TYPES["NodeJS"]="project-generator" # Removed -bash
+PROJECT_TYPES["NodeJS with ANTLR4"]="project-generator-antlr4" # Removed -bash
+PROJECT_TYPES["NodeJS with Blessed.js (2-Panel TUI)"]="project-generator-blessedjs" # Removed -bash
+
+# --- Display Menu and Get User Choice ---
+PS3="Enter your choice: " # Prompt for the select command
+options=("NodeJS" "NodeJS with ANTLR4" "NodeJS with Blessed.js (2-Panel TUI)" "Exit") # List of options for the user
+
+select opt in "${options[@]}"
+do
+    case $opt in
+        "NodeJS")
+            cecho "${GREEN}" "You selected NodeJS project."
+            # Call the NodeJS project generator script
+            # Pass through --color and -y flags if they were used for this script
+            CMD="${PROJECT_TYPES["NodeJS"]}"
+            if [ "$COLOR_OUTPUT" = true ]; then
+                CMD="${CMD} --color"
+            fi
+            if [ "$YES_TO_ALL" = true ]; then
+                CMD="${CMD} -y"
+            fi
+            
+            cecho "${BLUE}" "Executing: ${CMD}"
+            eval "$CMD"
+            break # Exit the select loop after execution
+            ;;
+        "NodeJS with ANTLR4")
+            cecho "${GREEN}" "You selected NodeJS with ANTLR4 project."
+            # Call the NodeJS with ANTLR4 project generator script
+            CMD="${PROJECT_TYPES["NodeJS with ANTLR4"]}"
+            if [ "$COLOR_OUTPUT" = true ]; then
+                CMD="${CMD} --color"
+            fi
+            if [ "$YES_TO_ALL" = true ]; then
+                CMD="${CMD} -y"
+            fi
+            
+            cecho "${BLUE}" "Executing: ${CMD}"
+            eval "$CMD"
+            break # Exit the select loop after execution
+            ;;
+        "NodeJS with Blessed.js (2-Panel TUI)")
+            cecho "${GREEN}" "You selected NodeJS with Blessed.js (2-Panel TUI) project."
+            # Call the NodeJS with Blessed.js project generator script
+            CMD="${PROJECT_TYPES["NodeJS with Blessed.js (2-Panel TUI)"]}"
+            if [ "$COLOR_OUTPUT" = true ]; then
+                CMD="${CMD} --color"
+            fi
+            if [ "$YES_TO_ALL" = true ]; then
+                CMD="${CMD} -y"
+            fi
+            
+            cecho "${BLUE}" "Executing: ${CMD}"
+            eval "$CMD"
+            break # Exit the select loop after execution
+            ;;
+        "Exit")
+            cecho "${YELLOW}" "Exiting Project Type Selector. Goodbye!"
+            break
+            ;;
+        *)
+            cecho "${RED}" "Invalid option. Please try again."
+            ;;
+    esac
+done
+

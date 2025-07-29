@@ -1,0 +1,279 @@
+#!/bin/bash
+
+# This script automates the creation of a new TypeScript project with ANTLR4 setup,
+# fills in template values, and performs initial dependency installation.
+
+# --- Color Definitions (Optional) ---
+# Define ANSI escape codes for colors
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# --- 0. Parse Command Line Arguments ---
+COLOR_OUTPUT=false # Default to no color output
+YES_TO_ALL=false   # Default to interactive mode
+PROJECT_NAME_FROM_ARG="" # To store the optional project name passed as argument
+
+# Iterate through arguments to find flags and the optional project name
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --color)
+            COLOR_OUTPUT=true
+            ;;
+        -y)
+            YES_TO_ALL=true
+            ;;
+        *)
+            # If it's not a known flag, assume it's the project name
+            if [[ -z "$PROJECT_NAME_FROM_ARG" ]]; then
+                PROJECT_NAME_FROM_ARG="$1"
+            else
+                cecho "${YELLOW}" "Warning: Ignoring extra argument '$1'. Only one project name argument is supported."
+            fi
+            ;;
+    esac
+    shift # Move to the next argument
+done
+
+# Function to echo with color if enabled
+cecho() {
+  local color="$1"
+  local message="$2"
+  if [ "$COLOR_OUTPUT" = true ]; then
+    echo -e "${color}${message}${NC}"
+  else
+    echo "${message}"
+  fi
+}
+
+cecho "${BLUE}" "Initializing NodeJS with ANTLR4 Project Generator..."
+
+# --- Java Check and Installation ---
+cecho "${BLUE}" "Checking for Java Development Kit (JDK)..."
+if type "java" &> /dev/null; then
+    cecho "${GREEN}" "Java is already installed: $(java -version 2>&1 | head -n 1)"
+else
+    cecho "${YELLOW}" "Java (JDK) not found. Attempting to install..."
+
+    # Determine OS and try to install Java
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        if command -v apt &> /dev/null; then
+            # Debian/Ubuntu
+            cecho "${BLUE}" "Detected Debian/Ubuntu. Installing default-jdk..."
+            sudo apt update && sudo apt install default-jdk -y
+        elif command -v yum &> /dev/null; then
+            # CentOS/RHEL/Fedora (older)
+            cecho "${BLUE}" "Detected CentOS/RHEL (yum). Installing java-1.8.0-openjdk-devel..."
+            sudo yum install java-1.8.0-openjdk-devel -y
+        elif command -v dnf &> /dev/null; then
+            # Fedora/RHEL (newer)
+            cecho "${BLUE}" "Detected Fedora/RHEL (dnf). Installing java-latest-openjdk..."
+            sudo dnf install java-latest-openjdk -y
+        else
+            cecho "${RED}" "Error: No supported package manager (apt, yum, dnf) found for Java installation on Linux."
+            cecho "${YELLOW}" "Please install Java JDK manually. ANTLR4 grammar compilation might fail without it."
+        fi
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        cecho "${BLUE}" "Detected macOS. Attempting to install OpenJDK via Homebrew..."
+        if command -v brew &> /dev/null; then
+            brew install openjdk
+            # Link OpenJDK if installed via brew
+            sudo ln -sfn /usr/local/opt/openjdk/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk.jdk
+            cecho "${GREEN}" "Remember to add 'export PATH=\"/usr/local/opt/openjdk/bin:\$PATH\"' to your shell profile."
+        else
+            cecho "${RED}" "Error: Homebrew not found. Please install Homebrew (brew.sh) or Java JDK manually."
+            cecho "${YELLOW}" "ANTLR4 grammar compilation might fail without Java."
+        fi
+    else
+        cecho "${RED}" "Error: Unsupported operating system for automatic Java installation."
+        cecho "${YELLOW}" "Please install Java JDK manually. ANTLR4 grammar compilation might fail without it."
+    fi
+
+    # Re-check Java after attempted installation
+    if ! type "java" &> /dev/null; then
+        cecho "${RED}" "Java (JDK) installation failed or was not successful. ANTLR4 grammar compilation may not work."
+        cecho "${YELLOW}" "Please install Java Development Kit (JDK) manually and ensure it's in your PATH."
+        # Do not exit, allow script to continue but warn user
+    else
+        cecho "${GREEN}" "Java (JDK) successfully installed or detected after attempt: $(java -version 2>&1 | head -n 1)"
+    fi
+fi
+
+# --- 1. Determine Project Name ---
+PROJECT_NAME=""
+DEFAULT_PROJECT_NAME="my-antlr4-project" # Default project name for -y flag without argument
+
+if [[ -n "$PROJECT_NAME_FROM_ARG" ]]; then
+    PROJECT_NAME="$PROJECT_NAME_FROM_ARG"
+    if [ "$YES_TO_ALL" = false ]; then # Only prompt if -y is not present
+        read -p "Use '${PROJECT_NAME}' as project name? (y/N): " VERIFY_NAME
+        if [[ ! "$VERIFY_NAME" =~ ^[Yy]$ ]]; then
+            cecho "${RED}" "Verification failed. Exiting."
+            exit 1
+        fi
+    fi
+else
+    if [ "$YES_TO_ALL" = true ]; then # Use default if -y is present and no name is given
+        PROJECT_NAME="$DEFAULT_PROJECT_NAME"
+        cecho "${BLUE}" "No project name provided. Defaulting to '${PROJECT_NAME}'."
+    else # Prompt if -y is not present and no name is given
+        read -p "Enter your PROJECT_NAME (e.g., my-awesome-antlr4-app): " PROJECT_NAME
+    fi
+fi
+
+# Validate project name (basic check: not empty and no spaces)
+if [[ -z "$PROJECT_NAME" || "$PROJECT_NAME" =~ " " ]]; then
+    cecho "${RED}" "Error: Project name cannot be empty or contain spaces. Please try again."
+    exit 1
+fi
+
+# --- 2. Set Directory of Choice to CWD (no prompt) ---
+BASE_DIR="$(pwd)"
+cecho "${BLUE}" "Project will be created in current directory: ${BASE_DIR}"
+
+# Construct the full project path
+PROJECT_PATH="${BASE_DIR}/${PROJECT_NAME}"
+
+# --- 3. Create the main project directory ---
+cecho "${BLUE}" "Creating project directory: ${PROJECT_PATH}"
+mkdir -p "$PROJECT_PATH"
+
+# Check if directory creation was successful
+if [ $? -ne 0 ]; then
+    cecho "${RED}" "Error: Failed to create project directory. It might already exist or you lack permissions."
+    exit 1
+fi
+
+# Navigate into the new project directory
+cd "$PROJECT_PATH" || { cecho "${RED}" "Error: Could not change to project directory."; exit 1; }
+
+cecho "${GREEN}" "Navigated to: $(pwd)"
+
+# --- 4. Create src/ and grammar/ subdirectories ---
+cecho "${BLUE}" "Creating src/ and grammar/ directories..."
+mkdir -p src grammar
+
+# --- 5. Create src/main.ts ---
+cecho "${BLUE}" "Creating src/main.ts..."
+cat <<EOL > src/main.ts
+console.log('Hi Mom, this is an ANTLR4-enabled project!')
+EOL
+
+# --- 6. Create a placeholder ANTLR4 grammar file ---
+cecho "${BLUE}" "Creating grammar/MyGrammar.g4..."
+cat <<EOL > grammar/MyGrammar.g4
+grammar MyGrammar;
+
+// Define parser rules
+parse : expression EOF ;
+
+expression
+    : INT                          # Int
+    | expression (MUL | DIV) expression # MulDiv
+    | expression (ADD | SUB) expression # AddSub
+    | LPAREN expression RPAREN     # Parens
+    ;
+
+// Define lexer rules
+MUL : '*' ;
+DIV : '/' ;
+ADD : '+' ;
+SUB : '-' ;
+INT : [0-9]+ ;
+WS  : [ \\t\\r\\n]+ -> skip ;
+LPAREN : '(' ;
+RPAREN : ')' ;
+EOL
+
+# --- 7. Create package.json ---
+cecho "${BLUE}" "Creating package.json..."
+
+# Using specific, recent versions for LATEST values
+TYPES_NODE_VERSION="^20.14.10" # Align with Node.js 20 LTS
+TYPESCRIPT_VERSION="^5.5.3"   # Latest stable TypeScript 5.5.x
+ANTLR4_VERSION="^4.13.1"      # Latest stable antlr4 runtime
+ANTLR4TS_VERSION="^0.5.0-alpha.4" # Latest stable antlr4ts runtime for TypeScript
+ANTLR4TS_CLI_VERSION="^0.5.0-alpha.4" # Latest stable antlr4ts-cli for TypeScript
+
+cat <<EOL > package.json
+{
+  "name": "${PROJECT_NAME}",
+  "version": "1.0.0",
+  "type": "module",
+  "repository": "https://github.com/Duroktar",
+  "author": "duroktar <duroktar@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "debug": "node --watch --inspect-wait --experimental-strip-types --env-file=.env src/main.ts",
+    "start": "node --experimental-strip-types --env-file=.env src/main.ts",
+    "dev": "node --watch --experimental-strip-types --env-file=.env src/main.ts",
+    "build:grammar": "antlr4ts -visitor -o src/parser grammar/*.g4"
+  },
+  "dependencies": {
+    "antlr4": "${ANTLR4_VERSION}",
+    "antlr4ts": "${ANTLR4TS_VERSION}"
+  },
+  "devDependencies": {
+    "@types/node": "${TYPES_NODE_VERSION}",
+    "typescript": "${TYPESCRIPT_VERSION}",
+    "antlr4ts-cli": "${ANTLR4TS_CLI_VERSION}"
+  }
+}
+EOL
+
+# --- 8. Create .env file with content ---
+cecho "${BLUE}" "Creating .env file..."
+cat <<EOL > .env
+NODE_OPTIONS="--disable-warning=ExperimentalWarning"
+EOL
+
+# --- 9. Run 'yarn install' ---
+cecho "${BLUE}" "Running 'yarn install' to fetch dependencies. This may take a moment..."
+yarn install
+
+if [ $? -ne 0 ]; then
+    cecho "${YELLOW}" "Warning: 'yarn install' failed. Please check your yarn installation and network connection."
+    cecho "${YELLOW}" "You may need to run 'yarn install' manually in ${PROJECT_PATH}."
+fi
+
+# --- 10. Run 'tsc --init' ---
+cecho "${BLUE}" "Running 'tsc --init'..."
+TSC_INIT_CMD="./node_modules/.bin/tsc --init"
+if [ "$YES_TO_ALL" = true ]; then
+    TSC_INIT_CMD="${TSC_INIT_CMD} -y" # Add -y if YES_TO_ALL is true
+fi
+
+# Check if tsc exists in node_modules/.bin/ before running
+if [ -f "./node_modules/.bin/tsc" ]; then
+    eval "$TSC_INIT_CMD" # Use eval to execute the command string
+    if [ $? -ne 0 ]; then
+        cecho "${YELLOW}" "Warning: 'tsc --init' failed. You may need to run it manually."
+    fi
+else
+    cecho "${YELLOW}" "Warning: 'tsc' executable not found in node_modules/.bin/. Skipping TypeScript initialization."
+    cecho "${YELLOW}" "Ensure 'typescript' is installed as a dev dependency, or run 'tsc --init' manually."
+fi
+
+# --- 11. Run 'build:grammar' script ---
+cecho "${BLUE}" "Attempting to build ANTLR4 grammar..."
+if [ -f "./node_modules/.bin/antlr4ts" ]; then
+    yarn build:grammar
+    if [ $? -ne 0 ]; then
+        cecho "${YELLOW}" "Warning: 'yarn build:grammar' failed. Check your grammar file or ANTLR4 setup."
+    else
+        cecho "${GREEN}" "ANTLR4 grammar built successfully!"
+    fi
+else
+    cecho "${YELLOW}" "Warning: 'antlr4ts' executable not found. Skipping grammar build."
+    cecho "${YELLOW}" "You may need to run 'yarn build:grammar' manually after setup."
+fi
+
+
+cecho "${GREEN}" "NodeJS with ANTLR4 project setup complete in ${PROJECT_PATH}!"
+cecho "${GREEN}" "To get started, navigate to the project directory: cd ${PROJECT_PATH}"
+cecho "${GREEN}" "Then you can run: yarn dev"
+cecho "${GREEN}" "To re-build your grammar, run: yarn build:grammar"
+

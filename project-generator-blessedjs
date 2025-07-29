@@ -1,0 +1,304 @@
+#!/bin/bash
+
+# This script automates the creation of a new TypeScript project with Blessed.js (2-Panel TUI) setup,
+# fills in template values, and performs initial dependency installation.
+
+# --- Color Definitions (Optional) ---
+# Define ANSI escape codes for colors
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# --- 0. Parse Command Line Arguments ---
+COLOR_OUTPUT=false # Default to no color output
+YES_TO_ALL=false   # Default to interactive mode
+PROJECT_NAME_FROM_ARG="" # To store the optional project name passed as argument
+
+# Iterate through arguments to find flags and the optional project name
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --color)
+            COLOR_OUTPUT=true
+            ;;
+        -y)
+            YES_TO_ALL=true
+            ;;
+        *)
+            # If it's not a known flag, assume it's the project name
+            if [[ -z "$PROJECT_NAME_FROM_ARG" ]]; then
+                PROJECT_NAME_FROM_ARG="$1"
+            else
+                cecho "${YELLOW}" "Warning: Ignoring extra argument '$1'. Only one project name argument is supported."
+            fi
+            ;;
+    esac
+    shift # Move to the next argument
+done
+
+# Function to echo with color if enabled
+cecho() {
+  local color="$1"
+  local message="$2"
+  if [ "$COLOR_OUTPUT" = true ]; then
+    echo -e "${color}${message}${NC}"
+  else
+    echo "${message}"
+  fi
+}
+
+cecho "${BLUE}" "Initializing NodeJS with Blessed.js (2-Panel TUI) Project Generator..."
+
+# --- 1. Determine Project Name ---
+PROJECT_NAME=""
+DEFAULT_PROJECT_NAME="my-blessed-tui" # Default project name for -y flag without argument
+
+if [[ -n "$PROJECT_NAME_FROM_ARG" ]]; then
+    PROJECT_NAME="$PROJECT_NAME_FROM_ARG"
+    if [ "$YES_TO_ALL" = false ]; then # Only prompt if -y is not present
+        read -p "Use '${PROJECT_NAME}' as project name? (y/N): " VERIFY_NAME
+        if [[ ! "$VERIFY_NAME" =~ ^[Yy]$ ]]; then
+            cecho "${RED}" "Verification failed. Exiting."
+            exit 1
+        fi
+    fi
+else
+    if [ "$YES_TO_ALL" = true ]; then # Use default if -y is present and no name is given
+        PROJECT_NAME="$DEFAULT_PROJECT_NAME"
+        cecho "${BLUE}" "No project name provided. Defaulting to '${PROJECT_NAME}'."
+    else # Prompt if -y is not present and no name is given
+        read -p "Enter your PROJECT_NAME (e.g., my-awesome-tui-app): " PROJECT_NAME
+    fi
+fi
+
+# Validate project name (basic check: not empty and no spaces)
+if [[ -z "$PROJECT_NAME" || "$PROJECT_NAME" =~ " " ]]; then
+    cecho "${RED}" "Error: Project name cannot be empty or contain spaces. Please try again."
+    exit 1
+fi
+
+# --- 2. Set Directory of Choice to CWD (no prompt) ---
+BASE_DIR="$(pwd)"
+cecho "${BLUE}" "Project will be created in current directory: ${BASE_DIR}"
+
+# Construct the full project path
+PROJECT_PATH="${BASE_DIR}/${PROJECT_NAME}"
+
+# --- 3. Create the main project directory ---
+cecho "${BLUE}" "Creating project directory: ${PROJECT_PATH}"
+mkdir -p "$PROJECT_PATH"
+
+# Check if directory creation was successful
+if [ $? -ne 0 ]; then
+    cecho "${RED}" "Error: Failed to create project directory. It might already exist or you lack permissions."
+    exit 1
+fi
+
+# Navigate into the new project directory
+cd "$PROJECT_PATH" || { cecho "${RED}" "Error: Could not change to project directory."; exit 1; }
+
+cecho "${GREEN}" "Navigated to: $(pwd)"
+
+# --- 4. Create src/ subdirectory ---
+cecho "${BLUE}" "Creating src/ directory..."
+mkdir -p src
+
+# --- 5. Create src/main.ts (Blessed.js application) ---
+cecho "${BLUE}" "Creating src/main.ts with Blessed.js 2-panel TUI..."
+cat <<EOL > src/main.ts
+import blessed from 'blessed';
+import { LoremIpsum } from 'lorem-ipsum';
+
+// Create a screen object.
+const screen = blessed.screen({
+  smartCSR: true,
+  title: '${PROJECT_NAME} TUI',
+  dockBorders: true,
+});
+
+// --- Left Panel: Text Area (Monaco Editor equivalent) ---
+const editorPanel = blessed.textarea({
+  parent: screen,
+  top: 0,
+  left: 0,
+  width: '70%',
+  height: '100%',
+  label: ' Code Editor (Blessed.js Textarea) ',
+  inputOnFocus: true,
+  padding: {
+    left: 1,
+    right: 1,
+    top: 1,
+    bottom: 1,
+  },
+  border: {
+    type: 'line'
+  },
+  style: {
+    fg: 'white',
+    bg: 'black',
+    border: {
+      fg: '#f0f0f0'
+    },
+    hover: {
+      border: {
+        fg: 'blue'
+      }
+    },
+    focus: {
+      border: {
+        fg: 'green'
+      }
+    }
+  },
+  keys: true,
+  mouse: true,
+  scrollable: true,
+  alwaysScroll: true,
+  scrollbar: {
+    ch: ' ',
+    inverse: true
+  }
+});
+
+editorPanel.setValue('// Type your code here\\nconsole.log("Hello TUI!");');
+
+// --- Right Panel: Lorem Ipsum Display ---
+const loremIpsum = new LoremIpsum({
+  sentencesPerParagraph: {
+    max: 8,
+    min: 4
+  },
+  wordsPerSentence: {
+    max: 16,
+    min: 4
+  }
+});
+
+const loremPanel = blessed.box({
+  parent: screen,
+  top: 0,
+  left: '70%',
+  width: '30%',
+  height: '100%',
+  label: ' Lorem Ipsum Display ',
+  content: loremIpsum.generateParagraphs(5),
+  tags: true,
+  padding: {
+    left: 1,
+    right: 1,
+    top: 1,
+    bottom: 1,
+  },
+  border: {
+    type: 'line'
+  },
+  style: {
+    fg: 'white',
+    bg: 'black',
+    border: {
+      fg: '#f0f0f0'
+    },
+    hover: {
+      border: {
+        fg: 'blue'
+      }
+    }
+  },
+  scrollable: true,
+  alwaysScroll: true,
+  scrollbar: {
+    ch: ' ',
+    inverse: true
+  }
+});
+
+// Append our boxes to the screen.
+screen.append(editorPanel);
+screen.append(loremPanel);
+
+// Focus on the editor panel initially
+editorPanel.focus();
+
+// Quit on Escape, q, or Ctrl+C.
+screen.key(['escape', 'q', 'C-c'], function(ch, key) {
+  return process.exit(0);
+});
+
+// Render the screen.
+screen.render();
+EOL
+
+# --- 6. Create package.json ---
+cecho "${BLUE}" "Creating package.json..."
+
+# Using specific, recent versions for LATEST values
+TYPES_NODE_VERSION="^20.14.10" # Align with Node.js 20 LTS
+TYPESCRIPT_VERSION="^5.5.3"   # Latest stable TypeScript 5.5.x
+BLESSED_VERSION="^0.1.81"     # Latest stable blessed version
+TYPES_BLESSED_VERSION="^0.1.25" # Latest stable blessed types version
+LOREM_IPSUM_VERSION="^2.0.6"  # Latest stable lorem-ipsum version
+
+cat <<EOL > package.json
+{
+  "name": "${PROJECT_NAME}",
+  "version": "1.0.0",
+  "type": "module",
+  "repository": "https://github.com/Duroktar",
+  "author": "duroktar <duroktar@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "debug": "node --watch --inspect-wait --experimental-strip-types --env-file=.env src/main.ts",
+    "start": "node --experimental-strip-types --env-file=.env src/main.ts",
+    "dev": "node --watch --experimental-strip-types --env-file=.env src/main.ts"
+  },
+  "dependencies": {
+    "blessed": "${BLESSED_VERSION}",
+    "lorem-ipsum": "${LOREM_IPSUM_VERSION}"
+  },
+  "devDependencies": {
+    "@types/node": "${TYPES_NODE_VERSION}",
+    "@types/blessed": "${TYPES_BLESSED_VERSION}",
+    "typescript": "${TYPESCRIPT_VERSION}"
+  }
+}
+EOL
+
+# --- 7. Create .env file with content ---
+cecho "${BLUE}" "Creating .env file..."
+cat <<EOL > .env
+NODE_OPTIONS="--disable-warning=ExperimentalWarning"
+EOL
+
+# --- 8. Run 'yarn install' ---
+cecho "${BLUE}" "Running 'yarn install' to fetch dependencies. This may take a moment..."
+yarn install
+
+if [ $? -ne 0 ]; then
+    cecho "${YELLOW}" "Warning: 'yarn install' failed. Please check your yarn installation and network connection."
+    cecho "${YELLOW}" "You may need to run 'yarn install' manually in ${PROJECT_PATH}."
+fi
+
+# --- 9. Run 'tsc --init' ---
+cecho "${BLUE}" "Running 'tsc --init'..."
+TSC_INIT_CMD="./node_modules/.bin/tsc --init"
+if [ "$YES_TO_ALL" = true ]; then
+    TSC_INIT_CMD="${TSC_INIT_CMD} -y" # Add -y if YES_TO_ALL is true
+fi
+
+# Check if tsc exists in node_modules/.bin/ before running
+if [ -f "./node_modules/.bin/tsc" ]; then
+    eval "$TSC_INIT_CMD" # Use eval to execute the command string
+    if [ $? -ne 0 ]; then
+        cecho "${YELLOW}" "Warning: 'tsc --init' failed. You may need to run it manually."
+    fi
+else
+    cecho "${YELLOW}" "Warning: 'tsc' executable not found in node_modules/.bin/. Skipping TypeScript initialization."
+    cecho "${YELLOW}" "Ensure 'typescript' is installed as a dev dependency, or run 'tsc --init' manually."
+fi
+
+cecho "${GREEN}" "NodeJS with Blessed.js (2-Panel TUI) project setup complete in ${PROJECT_PATH}!"
+cecho "${GREEN}" "To get started, navigate to the project directory: cd ${PROJECT_PATH}"
+cecho "${GREEN}" "Then you can run: yarn dev"
+
